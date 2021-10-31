@@ -1,5 +1,6 @@
 #define FAR_DISTANCE 1000000.0
 #define SPHERE_COUNT 2
+#define MAX_DEPTH 5
 
 vec2 ndc(vec2 pos, vec2 screen) {
     return vec2(
@@ -19,11 +20,10 @@ vec3 perspective(vec3 pos, vec2 screen) {
 }
 
 struct Material {
-    /*vec3 emmitance;
+    vec3 emmitance;
     vec3 reflectance;
     float roughness;
-    float opacity;*/
-    vec4 color;
+    float opacity;
 };
 
 struct Sphere {
@@ -35,9 +35,9 @@ struct Sphere {
 Sphere spheres[SPHERE_COUNT];
 
 void initScene() {
-    Material mat_1 = Material(vec4(0.3, 0.2, 0.7, 1.));
-    Material mat_2 = Material(vec4(0.3, 0.2, 0.4, 1.));
-    spheres[0] = Sphere(mat_1, vec3(0, 0.5, 6.), 1.);
+    Material mat_1 = Material(vec3(.2, .3, .4), vec3(.2, .3, .4), 1., 1.);
+    Material mat_2 = Material(vec3(.4, .2, .3), vec3(.2, .3, .4), 1., 1.);
+    spheres[0] = Sphere(mat_1, vec3(0, -1, 6.), 1.);
     spheres[1] = Sphere(mat_2, vec3(0, 0, 5.), 1.);
 }
 
@@ -77,6 +77,23 @@ bool castRay(vec3 ray, out float dist, out vec3 norm, out Material mat) {
     return dist != FAR_DISTANCE;
 }
 
+vec3 tracePath(vec3 ray) {
+    vec3 L = vec3(0);
+    vec3 F = vec3(1);
+    for (int i = 0; i < MAX_DEPTH; i++) {
+        vec3 n;
+        float d;
+        Material mat;
+        if (castRay(ray, d, n, mat)) {
+            L += F * mat.emmitance;
+            F *= mat.reflectance;
+        } else {
+            F = vec3(0);
+        }
+    }
+    return L;
+}
+
 void mainImage( out vec4 fragColor, in vec2 fragCoord )
 {
     initScene();
@@ -96,11 +113,5 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     vec3 n;
     Material mat;
 
-    fragColor = vec4(0.1);
-
-    if (castRay(cam, d, n, mat)) {
-        vec3 light = normalize(vec3(.0, 1., 0.));
-        
-        fragColor = dot(light, n) * mat.color;
-    }
+    fragColor = vec4(tracePath(cam), 1.);
 }
