@@ -1,6 +1,47 @@
 #define FAR_DISTANCE 1000000.0
 #define SPHERE_COUNT 2
-#define MAX_DEPTH 5
+#define MAX_DEPTH 8
+#define PI 3.1415926535
+#define ORIGIN_BIAS 0.8
+#define ITERATIONS 10
+
+vec2 Seed;
+
+void initRandom(vec2 seed) {
+    Seed = seed;
+}
+
+float rand(){
+    float f = fract(sin(dot(Seed, vec2(12.9898, 78.233))) * 43758.5453);
+    Seed += vec2(0.1);
+    return f;
+}
+
+vec2 Random2D() {
+    return normalize(vec2(rand(), rand()));
+}
+
+vec3 Random3D() {
+    return normalize(vec3(rand(), rand(), rand()));
+}
+
+vec3 uniformRandomPoint(vec2 randAngles) {
+    float phi = 2. * PI * randAngles.x;
+    float theta = 2. * PI * randAngles.y;
+    return vec3(
+        cos(phi) * sin(theta),
+        cos(phi) * cos(theta),
+        sin(phi)
+    );
+}
+
+vec3 hemispherePoint(vec3 v, vec3 n) {
+    vec3 randV = normalize(2. * Random3D() - 1.);
+    vec3 tangent = cross(n, randV);
+    vec3 bitangent = cross(n, tangent);
+    mat3 transform = mat3(tangent, bitangent, n);
+    return transform * v;
+}
 
 vec2 ndc(vec2 pos, vec2 screen) {
     return vec2(
@@ -35,16 +76,17 @@ struct Sphere {
 Sphere spheres[SPHERE_COUNT];
 
 void initScene() {
-    Material mat_1 = Material(vec3(.2, .3, .4), vec3(.2, .3, .4), 1., 1.);
-    Material mat_2 = Material(vec3(.4, .2, .3), vec3(.2, .3, .4), 1., 1.);
-    spheres[0] = Sphere(mat_1, vec3(0, -1, 6.), 1.);
-    spheres[1] = Sphere(mat_2, vec3(0, 0, 5.), 1.);
+    Material mat_1 = Material(vec3(0.1, 0.2, 0.3), vec3(1), .4, .3);
+    Material mat_2 = Material(normalize(vec3(0.3, 0.5, 0.)), vec3(.2, .3, .4), .1, .1);
+    spheres[0] = Sphere(mat_1, vec3(0, -1, 7.), 1.);
+    spheres[1] = Sphere(mat_2, vec3(-1, 0, 5.), .5);
 }
 
-bool intersectSphere(vec3 ray, Sphere sph, out float dist, out vec3 n) {
+bool intersectSphere(vec3 ray, vec3 origin, Sphere sph, out float dist, out vec3 n) {
+    vec3 L = sph.pos - origin;
     float a = 1.;
-    float b = dot(ray, sph.pos);
-    float c = dot(sph.pos, sph.pos) - sph.r*sph.r;
+    float b = dot(ray, L);
+    float c = dot(L, L) - sph.r*sph.r;
     float d = b*b - a*c;
     if (d < 0.) {
         return false;
@@ -58,17 +100,17 @@ bool intersectSphere(vec3 ray, Sphere sph, out float dist, out vec3 n) {
     } else {
         return false;
     }
-    n = normalize(dist * ray - sph.pos);
+    n = normalize(dist * ray - L);
     return true;
 }
 
-bool castRay(vec3 ray, out float dist, out vec3 norm, out Material mat) {
+bool castRay(vec3 ray, vec3 origin, out float dist, out vec3 norm, out Material mat) {
     dist = FAR_DISTANCE;
     for (int i = 0; i < SPHERE_COUNT; i++) {
         Sphere sph = spheres[i];
         float d;
         vec3 n;
-        if (intersectSphere(ray, sph, d, n) && d < dist) {
+        if (intersectSphere(ray, origin, sph, d, n) && d < dist) {
             dist = d;
             norm = n;
             mat = sph.mat;
@@ -77,16 +119,26 @@ bool castRay(vec3 ray, out float dist, out vec3 norm, out Material mat) {
     return dist != FAR_DISTANCE;
 }
 
-vec3 tracePath(vec3 ray) {
+vec3 tracePath(vec3 ray, vec3 origin) {
     vec3 L = vec3(0);
     vec3 F = vec3(1);
     for (int i = 0; i < MAX_DEPTH; i++) {
         vec3 n;
         float d;
         Material mat;
-        if (castRay(ray, d, n, mat)) {
+        if (castRay(ray, origin, d, n, mat)) {
             L += F * mat.emmitance;
             F *= mat.reflectance;
+
+            origin += d * ray + ORIGIN_BIAS * n;
+            vec3 rayBias = hemispherePoint(
+                uniformRandomPoint(
+                    Random2D()
+                ),
+                n
+            );
+            vec3 idealRayReflect = reflect(ray, n);
+            ray = normalize(mix(rayBias, idealRayReflect, mat.roughness));
         } else {
             F = vec3(0);
         }
@@ -96,6 +148,7 @@ vec3 tracePath(vec3 ray) {
 
 void mainImage( out vec4 fragColor, in vec2 fragCoord )
 {
+    initRandom(fragCoord);
     initScene();
 
     float w = iResolution.x;
@@ -109,9 +162,8 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
         )
     );
 
-    float d;
-    vec3 n;
-    Material mat;
-
-    fragColor = vec4(tracePath(cam), 1.);
+    for (int i = 0; i < ITERATIONS; i++) {
+        fragColor += vec4(tracePath(cam, vec3(0)), 1.);
+    }
+    fragColor /= vec4(ITERATIONS);
 }
