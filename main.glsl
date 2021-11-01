@@ -1,9 +1,11 @@
 #define FAR_DISTANCE 1000000.0
-#define SPHERE_COUNT 2
+#define SPHERE_COUNT 4
+#define PLANE_COUNT 5
 #define MAX_DEPTH 8
 #define PI 3.1415926535
 #define ORIGIN_BIAS 0.8
 #define ITERATIONS 10
+#define FOV 1.
 
 vec2 Seed;
 
@@ -51,11 +53,10 @@ vec2 ndc(vec2 pos, vec2 screen) {
 }
 
 vec3 perspective(vec3 pos, vec2 screen) {
-    float fov = 1.;
     float ar = screen.x / screen.y;
     return vec3(
-        pos.x * tan(fov / 2.) * ar / pos.z,
-        pos.y * tan(fov / 2.) / pos.z,
+        pos.x * tan(FOV / 2.) * ar / pos.z,
+        pos.y * tan(FOV / 2.) / pos.z,
         pos.z
     );
 }
@@ -73,13 +74,34 @@ struct Sphere {
     float r;
 };
 
+struct Plane {
+    Material mat;
+    vec4 pos;
+};
+
 Sphere spheres[SPHERE_COUNT];
+Plane planes[PLANE_COUNT];
 
 void initScene() {
-    Material mat_1 = Material(vec3(0.1, 0.2, 0.3), vec3(1), .4, .3);
+    Material mat_0 = Material(vec3(0.2), vec3(1), .6, 1.);
+    Material mat_1 = Material(vec3(.1), vec3(1), .4, .3);
     Material mat_2 = Material(normalize(vec3(0.3, 0.5, 0.)), vec3(.2, .3, .4), .1, .1);
-    spheres[0] = Sphere(mat_1, vec3(0, -1, 7.), 1.);
-    spheres[1] = Sphere(mat_2, vec3(-1, 0, 5.), .5);
+    Material mat_3 = Material(normalize(vec3(0.5, 0.3, 0.)), vec3(.2, .3, .4), .1, .1);
+    Material mat_4 = Material(normalize(vec3(0.5, 0, 0.7)), vec3(.2, .3, .4), .1, .1);
+    Material mat_5 = Material(vec3(0.1), vec3(1), .0, 1.);
+    Material mat_6 = Material(vec3(0.3), vec3(0.1), .0, 1.);
+    Material mat_7 = Material(vec3(0.1), vec3(0.1), .0, 1.);
+
+    spheres[0] = Sphere(mat_0, vec3(0, -1, 7.), 1.);
+    spheres[1] = Sphere(mat_0, vec3(-1, -1, 4.), .5);
+    spheres[2] = Sphere(mat_3, vec3(1.5, 1, 5.), .5);
+    spheres[3] = Sphere(mat_4, vec3(-2, 1, 5.), .5);
+
+    planes[0] = Plane(mat_6, vec4(0, -1, 0, -2));
+    planes[1] = Plane(mat_6, vec4(0, 1, 0, -2));
+    planes[2] = Plane(mat_5, vec4(-1, 0, 0, -4));
+    planes[3] = Plane(mat_5, vec4(1, 0, 0, -4));
+    planes[4] = Plane(mat_7, vec4(0, 0, 1, -10));
 }
 
 bool intersectSphere(vec3 ray, vec3 origin, Sphere sph, out float dist, out vec3 n) {
@@ -104,17 +126,32 @@ bool intersectSphere(vec3 ray, vec3 origin, Sphere sph, out float dist, out vec3
     return true;
 }
 
+bool intersectPlane(vec3 ray, vec3 origin, Plane plane, out float dist, out vec3 n) {
+    n = plane.pos.xyz;
+    float w = plane.pos.w;
+    dist = -(dot(origin, n) + w) / dot(ray, n);
+    return length(cross(n, ray.xyz)) != 0. && dist > 0.;
+}
+
 bool castRay(vec3 ray, vec3 origin, out float dist, out vec3 norm, out Material mat) {
     dist = FAR_DISTANCE;
+    float d;
+    vec3 n;
     for (int i = 0; i < SPHERE_COUNT; i++) {
         Sphere sph = spheres[i];
-        float d;
-        vec3 n;
         if (intersectSphere(ray, origin, sph, d, n) && d < dist) {
             dist = d;
             norm = n;
             mat = sph.mat;
-        } 
+        }
+    }
+    for (int i = 0; i < PLANE_COUNT; i++) {
+        Plane plane = planes[i];
+        if (intersectPlane(ray, origin, plane, d, n) && d < dist) {
+            dist = d;
+            norm = n;
+            mat = plane.mat;
+        }
     }
     return dist != FAR_DISTANCE;
 }
